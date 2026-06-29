@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "WebTrace",
+  "version": "1.0.0",
+  "description": "Web reverse engineering analysis tool",
+  "permissions": [
+    "scripting",
+    "storage",
+    "offscreen",
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background/index.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/index.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "externally_connectable": {
+    "ids": ["*"],
+    "matches": ["http://127.0.0.1/*", "http://localhost/*"]
+  },
+  "offscreen": {
+    "reasons": ["WORKERS"],
+    "justification": "WASM execution and heavy computation for code analysis"
+  }
+}
