@@ -96,6 +96,91 @@ export interface HookConfig {
   options?: {
     captureArgs?: boolean;
     captureResult?: boolean;
+    captureRequestHeaders?: boolean;
+    captureResponseHeaders?: boolean;
+    captureRequestBody?: boolean;
+    captureResponseBody?: boolean;
+    maxResponseBodySize?: number;
     maxLogs?: number;
   };
+}
+
+// ─── WASM 分析相关类型 ───
+
+/** WASM Section 通用结构 */
+export interface WasmSection {
+  id: number;
+  name: string;
+  offset: number;
+  size: number;
+  data: Uint8Array;
+}
+
+/** WASM 模块提取信息 */
+export interface WasmModuleInfo {
+  source: string;          // 来源（URL或inline）
+  size: number;            // 字节大小
+  exports: string[];       // 导出函数列表
+  imports: { module: string; name: string; kind: string }[];
+  memoryPages: number;     // 初始内存页数
+  tableSize: number;       // 函数表大小
+  customSections: string[]; // 自定义section名
+}
+
+/** WASM 函数信息 */
+export interface WasmFunctionInfo {
+  index: number;
+  name: string;
+  params: string[];
+  results: string[];
+  localCount: number;
+  bodySize: number;
+  callees: number[];
+}
+
+/** 加密算法特征匹配 */
+export interface CryptoSignature {
+  type: 'AES' | 'SHA256' | 'ChaCha20' | 'SM3' | 'SM4' | 'MD5' | 'unknown';
+  confidence: number;
+  evidence: string[];
+}
+
+/** WASM 类型定义 */
+export type WasmValType = 'i32' | 'i64' | 'f32' | 'f64' | 'v128' | 'funcref' | 'externref';
+
+/** WASM 导入条目 */
+export interface WasmImportEntry {
+  module: string;
+  name: string;
+  kind: 'function' | 'table' | 'memory' | 'global';
+  typeIndex?: number;
+}
+
+/** WASM 导出条目 */
+export interface WasmExportEntry {
+  name: string;
+  kind: 'function' | 'table' | 'memory' | 'global';
+  index: number;
+}
+
+/** WASM 反汇编指令 */
+export interface WasmInstruction {
+  offset: number;
+  opcode: number;
+  mnemonic: string;
+  operands: (number | string)[];
+}
+
+/** WASM 解析后的模块结构 */
+export interface ParsedWasmModule {
+  version: number;
+  sections: WasmSection[];
+  types: { params: WasmValType[]; results: WasmValType[] }[];
+  imports: WasmImportEntry[];
+  exports: WasmExportEntry[];
+  functions: WasmFunctionInfo[];
+  memoryPages: number;
+  tableSize: number;
+  customSections: string[];
+  dataSegments: { offset: number; data: Uint8Array }[];
 }

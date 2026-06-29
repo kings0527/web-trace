@@ -21,6 +21,12 @@ export const traceExecutionInputSchema = {
   maxTraceEntries: z.number().int().min(100).max(100000).optional().default(10000).describe(
     '最大trace条目数量。超出后停止收集（代码继续执行）。范围: 100-100000。',
   ),
+  timeout: z.number().int().min(5000).max(300000).optional().default(60000).describe(
+    '执行超时时间（毫秒）。默认60秒。',
+  ),
+  chunkSize: z.number().int().min(1000).max(5000000).optional().describe(
+    '当代码超过200KB时，自动分片执行。指定每片大小（字符数）。',
+  ),
 };
 
 // ─── Tool 元数据 ───
@@ -48,6 +54,8 @@ export interface TraceExecutionInput {
   code: string;
   inputs?: Record<string, unknown>;
   maxTraceEntries?: number;
+  timeout?: number;
+  chunkSize?: number;
 }
 
 export interface TraceExecutionOutput {
@@ -70,18 +78,34 @@ export async function handleTraceExecution(
   args: TraceExecutionInput,
 ): Promise<TraceExecutionOutput> {
   const maxEntries = args.maxTraceEntries ?? TRACE_BUFFER_SIZE;
+  const timeout = args.timeout ?? 60000;
   const startTime = Date.now();
+
+  // 大代码分片处理
+  const chunkSize = args.chunkSize ?? 200000;
+  let codeToExecute = args.code;
+
+  if (codeToExecute.length > chunkSize) {
+    // 对于超大代码，只执行最后一个分片（通常包含入口点）
+    // 或者将前面的分片作为声明，最后一个分片作为执行
+    console.warn(`[trace_execution] Code size ${codeToExecute.length} exceeds chunkSize ${chunkSize}, truncating for execution`);
+    // 取最后一个 chunk
+    const lastChunkStart = Math.max(0, codeToExecute.length - chunkSize);
+    // 向前找到完整的语句边界
+    const boundary = codeToExecute.indexOf('\n', lastChunkStart);
+    codeToExecute = codeToExecute.slice(boundary !== -1 ? boundary : lastChunkStart);
+  }
 
   // 构造发送到 Offscreen Document 的 payload
   const taskPayload = {
     action: 'trace_execute',
-    code: args.code,
+    code: codeToExecute,
     inputs: args.inputs || {},
     config: {
       memoryLimit: DEFAULT_SANDBOX_CONFIG.memoryLimit,
       maxExecutionTime: Math.min(
-        DEFAULT_SANDBOX_CONFIG.maxExecutionTime,
-        MCP_TOOL_TIMEOUT - 5000, // 留5秒给通信开销
+        timeout - 5000, // 留 5 秒给通信开销
+        MCP_TOOL_TIMEOUT - 5000,
       ),
       traceEnabled: true,
       maxTraceEntries: maxEntries,

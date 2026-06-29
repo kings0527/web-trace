@@ -25,7 +25,9 @@ export const hookApiInputSchema = {
 - document.cookie — 监控cookie读写
 - navigator.sendBeacon — 拦截Beacon API
 - eval — 监控动态代码执行
-- Function — 监控函数构造器`,
+- Function — 监控函数构造器
+- WebAssembly.instantiate — 拦截WASM实例化
+- WebAssembly.instantiateStreaming — 拦截流式WASM实例化`,
   ),
   mode: z.enum(['intercept', 'observe']).describe(
     `Hook模式：
@@ -35,6 +37,13 @@ export const hookApiInputSchema = {
   options: z.object({
     captureArgs: z.boolean().optional().default(true).describe('是否捕获调用参数'),
     captureResult: z.boolean().optional().default(true).describe('是否捕获返回值'),
+    captureRequestHeaders: z.boolean().optional().default(false).describe('是否捕获请求头（仅对fetch/XHR有效）'),
+    captureResponseHeaders: z.boolean().optional().default(false).describe('是否捕获响应头（仅对fetch/XHR有效）'),
+    captureRequestBody: z.boolean().optional().default(false).describe('是否捕获请求体（仅对fetch/XHR有效）'),
+    captureResponseBody: z.boolean().optional().default(false).describe('是否捕获响应体（仅对fetch有效，限制大小）'),
+    maxResponseBodySize: z.number().int().min(1024).max(10485760).optional().default(1048576).describe(
+      '响应体最大捕获大小（字节），默认1MB。',
+    ),
     maxLogs: z.number().int().min(10).max(10000).optional().default(1000).describe(
       'Hook日志最大保留条数。超出后丢弃最旧的日志。',
     ),
@@ -94,6 +103,11 @@ export interface HookApiInput {
   options?: {
     captureArgs?: boolean;
     captureResult?: boolean;
+    captureRequestHeaders?: boolean;
+    captureResponseHeaders?: boolean;
+    captureRequestBody?: boolean;
+    captureResponseBody?: boolean;
+    maxResponseBodySize?: number;
     maxLogs?: number;
   };
 }
@@ -129,6 +143,11 @@ export async function handleHookApi(
     options: {
       captureArgs,
       captureResult,
+      captureRequestHeaders: args.options?.captureRequestHeaders ?? false,
+      captureResponseHeaders: args.options?.captureResponseHeaders ?? false,
+      captureRequestBody: args.options?.captureRequestBody ?? false,
+      captureResponseBody: args.options?.captureResponseBody ?? false,
+      maxResponseBodySize: args.options?.maxResponseBodySize ?? 1048576,
       maxLogs,
     },
   };
@@ -171,6 +190,34 @@ export async function handleHookApi(
               args: config.options?.captureArgs ? argList : [],
             };
 
+            // fetch 特殊处理：捕获请求头/请求体
+            if (config.target === 'fetch') {
+              try {
+                const reqInput = argList[0];
+                const reqInit = argList[1];
+                if (config.options?.captureRequestHeaders) {
+                  let headers: Record<string, string> = {};
+                  if (reqInput instanceof Request) {
+                    reqInput.headers.forEach((v: string, k: string) => { headers[k] = v; });
+                  } else if (reqInit && reqInit.headers) {
+                    const h = new Headers(reqInit.headers);
+                    h.forEach((v: string, k: string) => { headers[k] = v; });
+                  }
+                  entry.requestHeaders = headers;
+                }
+                if (config.options?.captureRequestBody) {
+                  if (reqInput instanceof Request) {
+                    const clonedReq = reqInput.clone();
+                    clonedReq.text().then((t: string) => {
+                      entry.requestBody = t.slice(0, config.options?.maxResponseBodySize || 1048576);
+                    }).catch(() => {});
+                  } else if (reqInit && reqInit.body) {
+                    entry.requestBody = typeof reqInit.body === 'string' ? reqInit.body : '[non-string body]';
+                  }
+                }
+              } catch (_e) { /* 忽略捕获失败 */ }
+            }
+
             try {
               const result = Reflect.apply(target, thisArg, argList);
 
@@ -178,7 +225,48 @@ export async function handleHookApi(
               if (result instanceof Promise) {
                 return result.then((resolved) => {
                   if (config.options?.captureResult) {
-                    entry.result = resolved;
+                    // 对 fetch Response 做序列化，避免结构化克隆失败
+                    if (resolved instanceof Response) {
+                      const cloned = resolved.clone();
+                      entry.result = {
+                        status: cloned.status,
+                        statusText: cloned.statusText,
+                        url: cloned.url,
+                        type: cloned.type,
+                      };
+                      // 按选项捕获响应头
+                      if (config.options?.captureResponseHeaders) {
+                        const hdrs: Record<string, string> = {};
+                        cloned.headers.forEach((v: string, k: string) => { hdrs[k] = v; });
+                        entry.responseHeaders = hdrs;
+                      }
+                      // 按选项捕获响应体
+                      if (config.options?.captureResponseBody) {
+                        const maxBody = config.options?.maxResponseBodySize || 1048576;
+                        cloned.text().then((t: string) => {
+                          entry.responseBody = t.slice(0, maxBody);
+                        }).catch(() => {});
+                      }
+                    } else {
+                      entry.result = resolved;
+                    }
+                  }
+                  // WASM 实例化后捕获 Memory 引用
+                  if (config.target.includes('WebAssembly') && resolved) {
+                    try {
+                      const inst = resolved.instance || resolved;
+                      if (inst && inst.exports) {
+                        const mem = inst.exports.memory;
+                        if (mem && mem.buffer) {
+                          (window as any).__wt_wasm_instances = (window as any).__wt_wasm_instances || [];
+                          (window as any).__wt_wasm_instances.push({
+                            id: 'inst_' + Date.now(),
+                            instance: inst,
+                            memory: mem,
+                          });
+                        }
+                      }
+                    } catch (_e) { /* 忽略提取失败 */ }
                   }
                   logs.push(entry);
                   if (logs.length > (config.options?.maxLogs || 1000)) {

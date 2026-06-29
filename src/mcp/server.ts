@@ -49,6 +49,18 @@ import {
   deobfuscateInputSchema,
   deobfuscateMeta,
   handleDeobfuscate,
+  // extract_wasm
+  extractWasmInputSchema,
+  extractWasmMeta,
+  handleExtractWasm,
+  // analyze_wasm
+  analyzeWasmInputSchema,
+  analyzeWasmMeta,
+  handleAnalyzeWasm,
+  // dump_wasm_memory
+  dumpWasmMemoryInputSchema,
+  dumpWasmMemoryMeta,
+  handleDumpWasmMemory,
 } from './tools';
 
 // ─── 互斥锁 ───
@@ -173,6 +185,9 @@ export function createMCPServer(): McpServer {
 6. get_hook_logs — 获取Hook收集到的日志
 7. page_state — 获取当前页面完整状态
 8. deobfuscate — 对JS代码执行反混淆
+9. extract_wasm — 提取页面中的WASM模块
+10. analyze_wasm — 反汇编分析WASM模块，识别加密算法
+11. dump_wasm_memory — 读取WASM实例的线性内存
 
 工作流建议：
 - 先用 detect_protection 了解保护类型
@@ -181,7 +196,10 @@ export function createMCPServer(): McpServer {
 - 用 extract_bytecode 提取字节码
 - 用 analyze_jsvmp 分析VM结构
 - 用 deobfuscate 清洗混淆代码
-- 用 trace_execution 追踪执行逻辑`,
+- 用 trace_execution 追踪执行逻辑
+- 用 extract_wasm 提取WASM模块
+- 用 analyze_wasm 分析WASM加密算法
+- 用 dump_wasm_memory 读取WASM内存数据`,
     },
   );
 
@@ -248,6 +266,30 @@ export function createMCPServer(): McpServer {
     deobfuscateMeta.description,
     deobfuscateInputSchema,
     withProtection(deobfuscateMeta.name, handleDeobfuscate),
+  );
+
+  // 9. extract_wasm
+  server.tool(
+    extractWasmMeta.name,
+    extractWasmMeta.description,
+    extractWasmInputSchema,
+    withProtection(extractWasmMeta.name, handleExtractWasm),
+  );
+
+  // 10. analyze_wasm
+  server.tool(
+    analyzeWasmMeta.name,
+    analyzeWasmMeta.description,
+    analyzeWasmInputSchema,
+    withProtection(analyzeWasmMeta.name, handleAnalyzeWasm),
+  );
+
+  // 11. dump_wasm_memory
+  server.tool(
+    dumpWasmMemoryMeta.name,
+    dumpWasmMemoryMeta.description,
+    dumpWasmMemoryInputSchema,
+    withProtection(dumpWasmMemoryMeta.name, handleDumpWasmMemory),
   );
 
   mcpServer = server;

@@ -47,9 +47,17 @@ function analyzeProtectionFeatures(source: string): ProtectionInfo {
     { pattern: /cf[-_]?chl[-_]?bypass/i, name: 'Cloudflare Challenge' },
     { pattern: /__cf_chl_rt_tk/i, name: 'Cloudflare Turnstile' },
     { pattern: /cdn-cgi\/challenge-platform/i, name: 'Cloudflare Challenge Platform' },
+    { pattern: /cf[-_]clearance/gi, name: 'Cloudflare Clearance Cookie' },
     { pattern: /\$_ts\s*=\s*\{/i, name: 'RuiShu Cookie Mode' },
+    { pattern: /\$_ts\b/gi, name: 'RuiShu Cookie Var' },
     { pattern: /\$_zw\s*\[/i, name: 'RuiShu Var Pattern' },
     { pattern: /content="never".*name="referrer"/i, name: 'Anti-Referrer' },
+    { pattern: /zh[-_]?zse[-_]?ck/gi, name: 'Zhihu ZSE Challenge' },
+    { pattern: /static\.zhihu\.com\/zse-ck\//gi, name: 'Zhihu ZSE CDN' },
+    { pattern: /acw_sc__v[23]/gi, name: 'Acw Shield' },
+    { pattern: /akamai.*sensor_data/gi, name: 'Akamai Bot Manager' },
+    { pattern: /px-captcha|perimeterx/gi, name: 'PerimeterX' },
+    { pattern: /datadome/gi, name: 'DataDome' },
   ];
 
   for (const { pattern, name } of challengePatterns) {

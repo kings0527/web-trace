@@ -183,10 +183,16 @@ async function getPageInternalData(tabId: number): Promise<{
       const metaTags = document.querySelectorAll('meta');
       const meta: Record<string, string> = {};
       metaTags.forEach((m) => {
-        const name = m.getAttribute('name') || m.getAttribute('property') || m.getAttribute('http-equiv');
+        const name = m.getAttribute('name') || m.getAttribute('property')
+          || m.getAttribute('http-equiv') || m.getAttribute('id');
         const content = m.getAttribute('content');
         if (name && content) {
           meta[name] = content;
+        }
+        // 处理 charset meta（如 <meta charset="utf-8">）
+        const charset = m.getAttribute('charset');
+        if (charset) {
+          meta['charset'] = charset;
         }
       });
 

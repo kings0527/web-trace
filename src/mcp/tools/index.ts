@@ -77,3 +77,30 @@ export {
   type DeobfuscateInput,
   type DeobfuscateOutput,
 } from './deobfuscate';
+
+// extract_wasm
+export {
+  extractWasmInputSchema,
+  extractWasmMeta,
+  handleExtractWasm,
+  type ExtractWasmInput,
+  type ExtractWasmOutput,
+} from './extract-wasm';
+
+// analyze_wasm
+export {
+  analyzeWasmInputSchema,
+  analyzeWasmMeta,
+  handleAnalyzeWasm,
+  type AnalyzeWasmInput,
+  type AnalyzeWasmOutput,
+} from './analyze-wasm';
+
+// dump_wasm_memory
+export {
+  dumpWasmMemoryInputSchema,
+  dumpWasmMemoryMeta,
+  handleDumpWasmMemory,
+  type DumpWasmMemoryInput,
+  type DumpWasmMemoryOutput,
+} from './dump-wasm-memory';
