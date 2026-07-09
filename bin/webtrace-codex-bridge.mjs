@@ -91,6 +91,9 @@ wss.on('connection', (socket, request) => {
   console.error(
     `[WebTrace Bridge] Extension connected from ${request.socket.remoteAddress ?? 'unknown'}`,
   );
+  router.handleExtensionConnected(socket).catch((error) => {
+    console.error('[WebTrace Bridge] Failed to initialize extension MCP server:', error);
+  });
 
   socket.on('message', (data) => {
     router.handleExtensionMessage(data).catch((error) => {

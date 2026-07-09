@@ -76,6 +76,10 @@ codex mcp list
 默认连接链路：
 `Codex stdio MCP → webtrace-codex-bridge → ws://127.0.0.1:3100/mcp → Edge WebTrace extension`。
 
+bridge 会自行完成 Codex MCP 启动握手，因此 Codex 启动不依赖 Edge 扩展已经连上。
+如果扩展未连接，工具列表仍会显示；实际调用工具时会返回明确错误，直到 Edge WebTrace
+扩展加载并连上本地 bridge。
+
 可选环境变量：
 
 | 变量名 | 默认值 | 说明 |
