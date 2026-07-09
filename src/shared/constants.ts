@@ -18,9 +18,10 @@ export const TRACE_FLUSH_INTERVAL = 50; // ms
 export const TRACE_FLUSH_THRESHOLD = 0.8; // 80% full triggers flush
 
 // MCP Server 配置
-export const MCP_DEFAULT_PORT = 0; // random port
+export const MCP_DEFAULT_PORT = 3100;
 export const MCP_TOOL_TIMEOUT = 35_000; // 35s
 export const MCP_BIND_HOST = '127.0.0.1'; // localhost only
+export const MCP_BRIDGE_PATH = '/mcp';
 
 // Offscreen heartbeat
 export const OFFSCREEN_HEARTBEAT_INTERVAL = 5000; // 5s

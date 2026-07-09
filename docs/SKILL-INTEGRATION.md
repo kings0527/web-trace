@@ -57,6 +57,33 @@ sendMCPRequest('tools/call', {
 
 **架构：** `AI Agent → ws://127.0.0.1:3100/mcp → Bridge → Extension Service Worker`
 
+#### Codex CLI stdio bridge
+
+Codex CLI 不能直接连接 Edge Extension RuntimePort，也不能直接注册 WebSocket MCP URL。
+WebTrace 提供 `bin/webtrace-codex-bridge.mjs`，作为 Codex 可启动的 stdio MCP server：
+
+```bash
+# 1. 构建并在 Edge 中重新加载 dist/
+npm run build
+
+# 2. 注册 Codex MCP server
+codex mcp add webtrace -- node /Users/kk/git/web-trace/bin/webtrace-codex-bridge.mjs
+
+# 3. 重启 Codex；保持 Edge WebTrace 扩展已加载
+codex mcp list
+```
+
+默认连接链路：
+`Codex stdio MCP → webtrace-codex-bridge → ws://127.0.0.1:3100/mcp → Edge WebTrace extension`。
+
+可选环境变量：
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `WEBTRACE_MCP_PORT` | `3100` | bridge 监听端口 |
+| `WEBTRACE_MCP_HOST` | `127.0.0.1` | bridge 绑定地址 |
+| `WEBTRACE_EXTENSION_TIMEOUT_MS` | `30000` | Codex 请求等待扩展连接的时间 |
+
 ```python
 # Python Agent via websocket
 import asyncio

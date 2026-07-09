@@ -11,7 +11,14 @@
 import { OffscreenManager } from './offscreen-manager';
 import type { InternalMessage, TabState } from '@shared/types';
 import { isWebTraceMessage, createMessage } from '@shared/message-protocol';
-import { createMCPServer, startServer, stopServer, isServerRunning } from '@mcp/server';
+import { MCP_DEFAULT_PORT } from '@shared/constants';
+import {
+  createMCPServer,
+  startServer,
+  startBridgeServer,
+  isBridgeServerRunning,
+  isServerRunning,
+} from '@mcp/server';
 import { RuntimePortTransport, createWebSocketTransport } from '@mcp/transport';
 
 // ─── 全局状态（Service Worker每次唤醒都会重新执行顶层代码） ───
@@ -27,6 +34,7 @@ let initialized = false;
 
 /** MCP Server 是否已启动 */
 let mcpInitialized = false;
+let bridgeInitialized = false;
 
 /** Extension 版本和能力元数据 */
 export const EXTENSION_META = {
@@ -290,14 +298,21 @@ export async function initMCPServer(): Promise<void> {
  * 尝试连接 WebSocket bridge（可选，供外部AI Agent使用）
  * 如果本机有 bridge 进程运行在指定端口，Extension 将作为 WS client 连接
  */
-export async function connectWebSocketBridge(port: number = 3100): Promise<boolean> {
+export async function connectWebSocketBridge(port: number = MCP_DEFAULT_PORT): Promise<boolean> {
+  if (bridgeInitialized && isBridgeServerRunning()) {
+    console.log('[WebTrace SW] WebSocket bridge MCP Server already running');
+    return true;
+  }
+
   try {
     const wsTransport = createWebSocketTransport(port);
-    await startServer(wsTransport);
-    console.log(`[WebTrace SW] Connected to WebSocket bridge on port ${port}`);
+    await startBridgeServer(wsTransport);
+    bridgeInitialized = true;
+    console.log(`[WebTrace SW] WebSocket bridge transport started on port ${port}`);
     return true;
   } catch (err) {
     console.warn(`[WebTrace SW] WebSocket bridge connection failed (port ${port}):`, err);
+    bridgeInitialized = false;
     return false;
   }
 }
@@ -356,6 +371,7 @@ chrome.runtime.onMessageExternal.addListener(
         success: true,
         data: {
           mcpRunning: isServerRunning(),
+          bridgeRunning: isBridgeServerRunning(),
           initialized,
           tabCount: tabStates.size,
         },
@@ -370,7 +386,10 @@ chrome.runtime.onMessageExternal.addListener(
 
 // ─── 立即初始化（Service Worker加载时） ───
 initializeServiceWorker()
-  .then(() => initMCPServer())
+  .then(async () => {
+    await initMCPServer();
+    await connectWebSocketBridge(MCP_DEFAULT_PORT);
+  })
   .catch((err) => {
     console.error('[WebTrace SW] Top-level init failed:', err);
   });

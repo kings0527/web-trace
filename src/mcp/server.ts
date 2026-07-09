@@ -160,11 +160,13 @@ function withProtection<TArgs, TResult>(
 
 let mcpServer: McpServer | null = null;
 let currentTransport: Transport | null = null;
+let bridgeMCPServer: McpServer | null = null;
+let bridgeTransport: Transport | null = null;
 
 /**
  * 创建并配置 MCP Server 实例
  */
-export function createMCPServer(): McpServer {
+function createConfiguredMCPServer(): McpServer {
   const server = new McpServer(
     {
       name: 'WebTrace',
@@ -292,8 +294,16 @@ export function createMCPServer(): McpServer {
     withProtection(dumpWasmMemoryMeta.name, handleDumpWasmMemory),
   );
 
-  mcpServer = server;
   return server;
+}
+
+export function createMCPServer(): McpServer {
+  mcpServer = createConfiguredMCPServer();
+  return mcpServer;
+}
+
+export function createBridgeMCPServer(): McpServer {
+  return createConfiguredMCPServer();
 }
 
 /**
@@ -326,6 +336,31 @@ export async function stopServer(): Promise<void> {
 }
 
 /**
+ * 启动独立的 WebSocket bridge MCP Server。
+ * RuntimePort 和 bridge 各用一个 McpServer 实例，避免单 transport 限制导致互相关闭。
+ */
+export async function startBridgeServer(transport: Transport): Promise<void> {
+  if (bridgeMCPServer) {
+    console.warn('[MCP Bridge Server] Already connected, closing existing bridge transport');
+    await stopBridgeServer();
+  }
+
+  bridgeMCPServer = createBridgeMCPServer();
+  bridgeTransport = transport;
+  await bridgeMCPServer.connect(transport);
+  console.log('[MCP Bridge Server] Started and connected to transport');
+}
+
+export async function stopBridgeServer(): Promise<void> {
+  if (bridgeMCPServer) {
+    await bridgeMCPServer.close();
+  }
+  bridgeMCPServer = null;
+  bridgeTransport = null;
+  console.log('[MCP Bridge Server] Stopped');
+}
+
+/**
  * 获取当前 MCP Server 实例
  */
 export function getMCPServer(): McpServer | null {
@@ -337,4 +372,8 @@ export function getMCPServer(): McpServer | null {
  */
 export function isServerRunning(): boolean {
   return mcpServer?.isConnected() ?? false;
+}
+
+export function isBridgeServerRunning(): boolean {
+  return bridgeMCPServer?.isConnected() ?? false;
 }

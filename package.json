@@ -4,25 +4,31 @@
   "description": "AI-driven JSVMP auto-reversal Chrome/Edge Extension with MCP Server",
   "private": true,
   "type": "module",
+  "bin": {
+    "webtrace-codex-bridge": "./bin/webtrace-codex-bridge.mjs"
+  },
   "scripts": {
     "dev": "vite build --watch",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "bridge": "node ./bin/webtrace-codex-bridge.mjs",
+    "test": "node --test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
+    "@jitl/quickjs-singlefile-browser-release-sync": "^0.30.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "quickjs-emscripten-core": "^0.30.0",
-    "@jitl/quickjs-singlefile-browser-release-sync": "^0.30.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@babel/generator": "^7.25.0",
     "@babel/parser": "^7.25.0",
     "@babel/traverse": "^7.25.0",
     "@babel/types": "^7.25.0",
-    "@babel/generator": "^7.25.0",
+    "@crxjs/vite-plugin": "^2.0.0-beta.25",
     "@types/chrome": "^0.0.270",
     "typescript": "^5.5.0",
-    "vite": "^5.4.0",
-    "@crxjs/vite-plugin": "^2.0.0-beta.25"
+    "vite": "^5.4.0"
   }
 }

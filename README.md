@@ -27,6 +27,20 @@ npm run build
 ### Connect AI Agent
 See [docs/SKILL-INTEGRATION.md](docs/SKILL-INTEGRATION.md)
 
+### Connect Codex CLI
+
+WebTrace now includes a local stdio bridge for MCP clients that cannot connect to
+an Edge extension RuntimePort directly. The bridge listens for the extension at
+`ws://127.0.0.1:3100/mcp` and proxies MCP JSON-RPC over stdio to Codex.
+
+```bash
+codex mcp add webtrace -- node /Users/kk/git/web-trace/bin/webtrace-codex-bridge.mjs
+```
+
+After changing extension code, rebuild and reload the unpacked extension in
+`edge://extensions`. The extension service worker automatically connects to the
+bridge when Codex starts it.
+
 ## Architecture
 
 ```

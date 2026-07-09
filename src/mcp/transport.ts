@@ -13,7 +13,7 @@
 
 import type { Transport, TransportSendOptions } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
-import { MCP_BIND_HOST } from '@shared/constants';
+import { MCP_BIND_HOST, MCP_BRIDGE_PATH, MCP_DEFAULT_PORT } from '@shared/constants';
 
 // ─── Runtime Port Transport（浏览器内通信） ───
 
@@ -93,13 +93,20 @@ export class WebSocketClientTransport implements Transport {
   onmessage?: (message: JSONRPCMessage) => void;
 
   constructor(
-    private readonly url: string = `ws://${MCP_BIND_HOST}:3100/mcp`,
+    private readonly url: string = `ws://${MCP_BIND_HOST}:${MCP_DEFAULT_PORT}${MCP_BRIDGE_PATH}`,
     private readonly autoReconnect: boolean = true,
     private readonly reconnectDelay: number = 3000,
   ) {}
 
   async start(): Promise<void> {
-    await this.connect();
+    if (!this.autoReconnect) {
+      await this.connect();
+      return;
+    }
+
+    this.connect().catch(() => {
+      this.scheduleReconnect();
+    });
   }
 
   private connect(): Promise<void> {
@@ -251,8 +258,8 @@ export function createRuntimeTransport(portName?: string): RuntimePortTransport 
  * 创建 WebSocket Client Transport（连接到本机 bridge）
  * @param port bridge 端口号
  */
-export function createWebSocketTransport(port: number = 3100): WebSocketClientTransport {
-  return new WebSocketClientTransport(`ws://${MCP_BIND_HOST}:${port}/mcp`);
+export function createWebSocketTransport(port: number = MCP_DEFAULT_PORT): WebSocketClientTransport {
+  return new WebSocketClientTransport(`ws://${MCP_BIND_HOST}:${port}${MCP_BRIDGE_PATH}`);
 }
 
 /**
