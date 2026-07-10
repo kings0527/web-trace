@@ -43,8 +43,26 @@ import {
   getHookLogsMeta,
   handleGetHookLogs,
   // page_state
+  pageStateInputSchema,
   pageStateMeta,
   handlePageState,
+  // browser tab control
+  listTabsInputSchema,
+  listTabsMeta,
+  handleListTabs,
+  activateTabInputSchema,
+  activateTabMeta,
+  handleActivateTab,
+  navigateInputSchema,
+  navigateMeta,
+  handleNavigate,
+  // DOM inspection
+  domSnapshotInputSchema,
+  domSnapshotMeta,
+  handleDomSnapshot,
+  queryDomInputSchema,
+  queryDomMeta,
+  handleQueryDom,
   // deobfuscate
   deobfuscateInputSchema,
   deobfuscateMeta,
@@ -184,15 +202,21 @@ function createConfiguredMCPServer(): McpServer {
 4. extract_bytecode — 从页面中提取JSVMP字节码数组
 5. hook_api — 在页面中设置API Hook
 6. get_hook_logs — 获取Hook收集到的日志
-7. page_state — 获取当前页面完整状态
-8. deobfuscate — 对JS代码执行反混淆
-9. extract_wasm — 提取页面中的WASM模块
-10. analyze_wasm — 反汇编分析WASM模块，识别加密算法
-11. dump_wasm_memory — 读取WASM实例的线性内存
+7. page_state — 获取页面完整状态，支持指定 tabId/url
+8. list_tabs — 列出浏览器标签页
+9. activate_tab — 激活指定标签页
+10. navigate — 打开或导航到URL
+11. dom_snapshot — 获取页面DOM摘要
+12. query_dom — 通过CSS选择器读取DOM
+13. deobfuscate — 对JS代码执行反混淆
+14. extract_wasm — 提取页面中的WASM模块
+15. analyze_wasm — 反汇编分析WASM模块，识别加密算法
+16. dump_wasm_memory — 读取WASM实例的线性内存
 
 工作流建议：
 - 先用 detect_protection 了解保护类型
-- 用 page_state 获取页面全貌
+- 用 list_tabs/activate_tab 选择目标页
+- 用 page_state/dom_snapshot 获取页面全貌
 - 用 hook_api + get_hook_logs 监控关键API调用
 - 用 extract_bytecode 提取字节码
 - 用 analyze_jsvmp 分析VM结构
@@ -254,14 +278,55 @@ function createConfiguredMCPServer(): McpServer {
     withProtection(getHookLogsMeta.name, handleGetHookLogs),
   );
 
-  // 7. page_state（无参数工具）
+  // 7. page_state
   server.tool(
     pageStateMeta.name,
     pageStateMeta.description,
-    withProtection(pageStateMeta.name, handlePageState as any),
+    pageStateInputSchema,
+    withProtection(pageStateMeta.name, handlePageState),
   );
 
-  // 8. deobfuscate
+  // 8. list_tabs
+  server.tool(
+    listTabsMeta.name,
+    listTabsMeta.description,
+    listTabsInputSchema,
+    withProtection(listTabsMeta.name, handleListTabs),
+  );
+
+  // 9. activate_tab
+  server.tool(
+    activateTabMeta.name,
+    activateTabMeta.description,
+    activateTabInputSchema,
+    withProtection(activateTabMeta.name, handleActivateTab),
+  );
+
+  // 10. navigate
+  server.tool(
+    navigateMeta.name,
+    navigateMeta.description,
+    navigateInputSchema,
+    withProtection(navigateMeta.name, handleNavigate),
+  );
+
+  // 11. dom_snapshot
+  server.tool(
+    domSnapshotMeta.name,
+    domSnapshotMeta.description,
+    domSnapshotInputSchema,
+    withProtection(domSnapshotMeta.name, handleDomSnapshot),
+  );
+
+  // 12. query_dom
+  server.tool(
+    queryDomMeta.name,
+    queryDomMeta.description,
+    queryDomInputSchema,
+    withProtection(queryDomMeta.name, handleQueryDom),
+  );
+
+  // 13. deobfuscate
   server.tool(
     deobfuscateMeta.name,
     deobfuscateMeta.description,
@@ -269,7 +334,7 @@ function createConfiguredMCPServer(): McpServer {
     withProtection(deobfuscateMeta.name, handleDeobfuscate),
   );
 
-  // 9. extract_wasm
+  // 14. extract_wasm
   server.tool(
     extractWasmMeta.name,
     extractWasmMeta.description,
@@ -277,7 +342,7 @@ function createConfiguredMCPServer(): McpServer {
     withProtection(extractWasmMeta.name, handleExtractWasm),
   );
 
-  // 10. analyze_wasm
+  // 15. analyze_wasm
   server.tool(
     analyzeWasmMeta.name,
     analyzeWasmMeta.description,
@@ -285,7 +350,7 @@ function createConfiguredMCPServer(): McpServer {
     withProtection(analyzeWasmMeta.name, handleAnalyzeWasm),
   );
 
-  // 11. dump_wasm_memory
+  // 16. dump_wasm_memory
   server.tool(
     dumpWasmMemoryMeta.name,
     dumpWasmMemoryMeta.description,

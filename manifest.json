@@ -3,6 +3,7 @@
   "name": "WebTrace",
   "version": "1.0.0",
   "description": "Web reverse engineering analysis tool",
+  "incognito": "spanning",
   "permissions": [
     "scripting",
     "storage",

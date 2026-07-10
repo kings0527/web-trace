@@ -66,8 +66,42 @@ export {
   pageStateInputSchema,
   pageStateMeta,
   handlePageState,
+  type PageStateInput,
   type PageStateOutput,
 } from './page-state';
+
+// browser tab control
+export {
+  listTabsInputSchema,
+  listTabsMeta,
+  handleListTabs,
+  activateTabInputSchema,
+  activateTabMeta,
+  handleActivateTab,
+  navigateInputSchema,
+  navigateMeta,
+  handleNavigate,
+  type ListTabsInput,
+  type ListTabsOutput,
+  type ActivateTabInput,
+  type ActivateTabOutput,
+  type NavigateInput,
+  type NavigateOutput,
+} from './browser-tabs';
+
+// DOM inspection
+export {
+  domSnapshotInputSchema,
+  domSnapshotMeta,
+  handleDomSnapshot,
+  queryDomInputSchema,
+  queryDomMeta,
+  handleQueryDom,
+  type DomSnapshotInput,
+  type DomSnapshotOutput,
+  type QueryDomInput,
+  type QueryDomOutput,
+} from './dom-inspection';
 
 // deobfuscate
 export {

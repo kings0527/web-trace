@@ -6,10 +6,20 @@
  */
 
 import { z } from 'zod';
+import {
+  assertScriptableTab,
+  resolveTargetTab,
+  tabToSummary,
+  type TabSummary,
+  type TargetTabInput,
+} from './tab-utils';
 
 // ─── Schema 定义 ───
 
-export const pageStateInputSchema = {};
+export const pageStateInputSchema = {
+  tabId: z.number().int().nonnegative().optional().describe('目标标签页 ID。省略时使用当前活跃标签页。'),
+  url: z.string().url().optional().describe('目标标签页 URL，可传完整 URL 或前缀。'),
+};
 
 // ─── Tool 元数据 ───
 
@@ -17,9 +27,10 @@ export const pageStateMeta = {
   name: 'page_state',
   description: `获取当前活跃标签页的完整状态信息。
 
-无需参数，自动获取当前活跃tab的以下信息：
+默认获取当前活跃tab，也可以通过 tabId 或 url 指定目标标签页：
 - url: 当前页面URL
 - title: 页面标题
+- tab: 标签页摘要（tabId、windowId、active、incognito 等）
 - cookies: 该域名下的所有Cookie（名称、值、域、过期时间等）
 - localStorage: localStorage中的所有键值对
 - sessionStorage: sessionStorage中的所有键值对
@@ -35,6 +46,7 @@ export const pageStateMeta = {
 export interface PageStateOutput {
   url: string;
   title: string;
+  tab: TabSummary;
   cookies: Array<{
     name: string;
     value: string;
@@ -62,15 +74,14 @@ export interface PageStateOutput {
   meta: Record<string, string>;
 }
 
+export interface PageStateInput extends TargetTabInput {}
+
 /**
  * page_state 工具执行函数
  */
-export async function handlePageState(): Promise<PageStateOutput> {
-  // 获取当前活跃tab
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id || !tab.url) {
-    throw new Error('No active tab found or tab has no URL');
-  }
+export async function handlePageState(args: PageStateInput = {}): Promise<PageStateOutput> {
+  const tab = await resolveTargetTab(args);
+  assertScriptableTab(tab);
 
   const tabId = tab.id;
   const url = tab.url;
@@ -87,6 +98,7 @@ export async function handlePageState(): Promise<PageStateOutput> {
   return {
     url,
     title,
+    tab: tabToSummary(tab),
     cookies,
     localStorage: pageData.localStorage,
     sessionStorage: pageData.sessionStorage,

@@ -65,6 +65,36 @@ test('returns a static tools list without waiting for the extension socket', asy
   assert.equal(clientMessages[0].result.tools.some((tool) => tool.name === 'trace_execution'), true);
 });
 
+test('lists browser tab and DOM inspection tools with targetable schemas', async () => {
+  const clientMessages = [];
+  const router = createBridgeRouter({
+    getExtensionSocket: () => null,
+    waitForExtensionSocket: async () => null,
+    sendToClient: async (message) => clientMessages.push(message),
+    extensionTimeoutMs: 1,
+  });
+
+  await router.handleClientMessage({
+    jsonrpc: '2.0',
+    id: 20,
+    method: 'tools/list',
+    params: {},
+  });
+
+  const tools = new Map(clientMessages[0].result.tools.map((tool) => [tool.name, tool]));
+
+  for (const name of ['list_tabs', 'activate_tab', 'navigate', 'dom_snapshot', 'query_dom']) {
+    assert.equal(tools.has(name), true, `${name} should be exposed`);
+  }
+
+  assert.equal(tools.get('page_state').inputSchema.properties.tabId.type, 'integer');
+  assert.equal(tools.get('page_state').inputSchema.properties.url.type, 'string');
+  assert.equal(tools.get('activate_tab').inputSchema.required.includes('tabId'), true);
+  assert.equal(tools.get('navigate').inputSchema.properties.incognito.type, 'boolean');
+  assert.equal(tools.get('dom_snapshot').inputSchema.properties.includeHidden.type, 'boolean');
+  assert.equal(tools.get('query_dom').inputSchema.required.includes('selector'), true);
+});
+
 test('returns a JSON-RPC error when Codex calls a tool before the extension connects', async () => {
   const clientMessages = [];
   const router = createBridgeRouter({

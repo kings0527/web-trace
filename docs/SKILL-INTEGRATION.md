@@ -563,13 +563,23 @@ with sync_playwright() as p:
 
 ### 7. `page_state`
 
-获取当前活跃标签页的完整状态信息（无参数）。
+获取目标标签页的完整状态信息。默认读取当前活跃标签页，也可以通过
+`tabId` 或 `url` 指定目标页。
+
+**输入参数：**
+```json
+{
+  "tabId": "(optional) number - 目标标签页ID",
+  "url": "(optional) string - 目标标签页URL，可传完整URL或前缀"
+}
+```
 
 **输出格式：**
 ```json
 {
   "url": "https://...",
   "title": "Page Title",
+  "tab": { "id": 123, "windowId": 1, "active": true, "incognito": false },
   "cookies": [{ "name": "...", "value": "...", "domain": "...", "path": "/", "secure": true, "httpOnly": false }],
   "localStorage": { "key": "value" },
   "sessionStorage": { "key": "value" },
@@ -597,7 +607,20 @@ with sync_playwright() as p:
 }
 ```
 
-### 8. `deobfuscate`
+### 8. Browser tab and DOM tools
+
+多标签页和页面结构观察工具：
+
+- `list_tabs` — 列出所有标签页，返回 `tabId`、`windowId`、`url`、`active`、`incognito` 等字段
+- `activate_tab` — 通过 `tabId` 激活目标标签页
+- `navigate` — 在当前标签页、指定 `tabId` 或新标签页中打开 URL
+- `dom_snapshot` — 返回页面可见文本、输入框、按钮、链接、表单；默认不返回用户输入值
+- `query_dom` — 通过 CSS selector 读取节点文本、属性、可见性和可选 `outerHTML`
+
+隐身 / InPrivate 页面需要浏览器扩展详情页允许 WebTrace 在隐身模式运行；
+仅设置“允许所有网站”不足以访问隐身标签页。
+
+### 9. `deobfuscate`
 
 对混淆的 JavaScript 代码执行反混淆处理。
 
@@ -832,7 +855,10 @@ xvfb-run chrome --load-extension=/path/to/WebTrace/dist
 
 ### Q: 多 Tab 场景如何工作？
 
-所有需要页面交互的工具（`extract_bytecode`, `hook_api`, `get_hook_logs`, `page_state`）默认操作当前活跃 Tab。如果需要指定 Tab，可通过 `detect_protection` 的 `url` 参数直接分析目标 URL。
+所有需要页面交互的工具默认操作当前活跃 Tab。多标签页场景下先用
+`list_tabs` 找到目标 `tabId`，再用 `activate_tab`、`page_state`、
+`dom_snapshot` 或 `query_dom` 指定该 `tabId`。隐身页需要 Edge/Chrome
+扩展详情页启用 InPrivate/Incognito 权限。
 
 ### Q: Extension ID 如何固定？
 

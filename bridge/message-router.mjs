@@ -62,7 +62,49 @@ const WEBTRACE_TOOLS = [
     },
     limit: { type: 'integer', minimum: 1, maximum: 5000, default: 100 },
   }),
-  tool('page_state', '获取当前活跃标签页的完整状态信息。', {}),
+  tool('page_state', '获取目标标签页的完整状态信息，默认使用当前活跃标签页。', {
+    tabId: { type: 'integer', minimum: 0, description: '目标标签页 ID。省略时使用当前活跃标签页。' },
+    url: { type: 'string', format: 'uri', description: '目标标签页 URL，可传完整 URL 或前缀。' },
+  }),
+  tool('list_tabs', '列出当前浏览器所有标签页，用于在多窗口、多标签页或隐身窗口中选择目标页。', {
+    includeRestricted: {
+      type: 'boolean',
+      default: false,
+      description: '是否包含 chrome://、edge:// 等浏览器内部页面。',
+    },
+  }),
+  tool('activate_tab', '激活指定 tabId 的标签页，并可聚焦其所在窗口。', {
+    tabId: { type: 'integer', minimum: 0, description: '要激活的标签页 ID。' },
+    focusWindow: { type: 'boolean', default: true },
+  }, ['tabId']),
+  tool('navigate', '在当前标签页、指定 tabId 或新标签页中打开 URL。', {
+    url: { type: 'string', format: 'uri', description: '要打开或导航到的 URL。' },
+    tabId: { type: 'integer', minimum: 0, description: '目标标签页 ID。' },
+    windowId: { type: 'integer', description: '新建标签页时使用的窗口 ID。' },
+    newTab: { type: 'boolean', default: false },
+    active: { type: 'boolean', default: true },
+    incognito: {
+      type: 'boolean',
+      default: false,
+      description: 'newTab=true 时是否优先在隐身窗口打开。需要浏览器允许扩展在隐身模式运行。',
+    },
+  }, ['url']),
+  tool('dom_snapshot', '读取目标标签页的DOM摘要，包括可见文本、输入框、按钮、链接和表单。', {
+    tabId: { type: 'integer', minimum: 0, description: '目标标签页 ID。' },
+    url: { type: 'string', format: 'uri', description: '目标标签页 URL，可传完整 URL 或前缀。' },
+    includeHidden: { type: 'boolean', default: false },
+    maxTextLength: { type: 'integer', minimum: 100, maximum: 100000, default: 20000 },
+    maxElements: { type: 'integer', minimum: 10, maximum: 1000, default: 200 },
+  }),
+  tool('query_dom', '按CSS选择器读取目标标签页DOM节点的文本、属性、可见性和可选outerHTML。', {
+    selector: { type: 'string', minLength: 1, description: 'CSS 选择器。' },
+    tabId: { type: 'integer', minimum: 0, description: '目标标签页 ID。' },
+    url: { type: 'string', format: 'uri', description: '目标标签页 URL，可传完整 URL 或前缀。' },
+    includeHidden: { type: 'boolean', default: true },
+    limit: { type: 'integer', minimum: 1, maximum: 500, default: 50 },
+    includeOuterHTML: { type: 'boolean', default: false },
+    maxOuterHTMLLength: { type: 'integer', minimum: 100, maximum: 20000, default: 2000 },
+  }, ['selector']),
   tool('deobfuscate', '对混淆的JavaScript代码执行反混淆处理。', {
     code: { type: 'string', minLength: 1 },
     transforms: { type: 'array', items: { type: 'string' } },

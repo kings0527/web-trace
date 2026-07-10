@@ -86,8 +86,16 @@ WebTrace at the same time.
 | `extract_bytecode` | Extract bytecode arrays from page |
 | `hook_api` | Set up API hooks on page |
 | `get_hook_logs` | Retrieve hook logs |
-| `page_state` | Get page state (cookies/storage/scripts) |
+| `page_state` | Get page state (cookies/storage/scripts), optionally by `tabId` or `url` |
+| `list_tabs` | List browser tabs, including window and incognito metadata |
+| `activate_tab` | Activate a tab by `tabId` |
+| `navigate` | Navigate the current tab, a target tab, or a new tab |
+| `dom_snapshot` | Read visible text, forms, inputs, buttons, and links from a tab |
+| `query_dom` | Query DOM nodes by CSS selector |
 | `deobfuscate` | Deobfuscate JS code |
+
+For InPrivate/incognito pages, Edge must allow the extension in InPrivate
+mode. Site access set to "all sites" is not enough by itself.
 
 ## Integration
 
