@@ -172,13 +172,23 @@ export async function handleDomSnapshot(
 
       function visible(el: Element): boolean {
         const htmlEl = el as HTMLElement;
-        if (htmlEl.hidden) return false;
-        const style = getComputedStyle(htmlEl);
-        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-          return false;
+        for (let current: Element | null = el; current; current = current.parentElement) {
+          const currentEl = current as HTMLElement;
+          if (currentEl.hidden) return false;
+
+          const style = getComputedStyle(currentEl);
+          if (
+            style.display === 'none'
+            || style.visibility === 'hidden'
+            || style.visibility === 'collapse'
+            || Number.parseFloat(style.opacity) === 0
+          ) {
+            return false;
+          }
         }
+
         const rect = htmlEl.getBoundingClientRect();
-        return rect.width > 0 || rect.height > 0 || textOf(el).length > 0;
+        return rect.width > 0 && rect.height > 0;
       }
 
       function labelsFor(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): string[] {
@@ -317,13 +327,23 @@ export async function handleQueryDom(args: QueryDomInput): Promise<QueryDomOutpu
 
       function visible(el: Element): boolean {
         const htmlEl = el as HTMLElement;
-        if (htmlEl.hidden) return false;
-        const style = getComputedStyle(htmlEl);
-        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-          return false;
+        for (let current: Element | null = el; current; current = current.parentElement) {
+          const currentEl = current as HTMLElement;
+          if (currentEl.hidden) return false;
+
+          const style = getComputedStyle(currentEl);
+          if (
+            style.display === 'none'
+            || style.visibility === 'hidden'
+            || style.visibility === 'collapse'
+            || Number.parseFloat(style.opacity) === 0
+          ) {
+            return false;
+          }
         }
+
         const rect = htmlEl.getBoundingClientRect();
-        return rect.width > 0 || rect.height > 0 || textOf(el).length > 0;
+        return rect.width > 0 && rect.height > 0;
       }
 
       function rectOf(el: Element) {
