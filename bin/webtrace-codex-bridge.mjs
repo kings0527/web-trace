@@ -5,6 +5,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { WebSocketServer } from 'ws';
 
 import { createBridgeRouter } from '../bridge/message-router.mjs';
+import { listenWithPortFallback } from '../bridge/listen-with-port-fallback.mjs';
 
 function readOption(name, fallback) {
   const index = process.argv.indexOf(`--${name}`);
@@ -17,6 +18,7 @@ function readOption(name, fallback) {
 const host = readOption('host', process.env.WEBTRACE_MCP_HOST ?? '127.0.0.1');
 const port = Number(readOption('port', process.env.WEBTRACE_MCP_PORT ?? '3100'));
 const path = readOption('path', process.env.WEBTRACE_MCP_PATH ?? '/mcp');
+const portRange = Number(readOption('port-range', process.env.WEBTRACE_MCP_PORT_RANGE ?? '10'));
 const extensionTimeoutMs = Number(
   readOption('extension-timeout-ms', process.env.WEBTRACE_EXTENSION_TIMEOUT_MS ?? '30000'),
 );
@@ -72,7 +74,15 @@ const router = createBridgeRouter({
   logger: console,
 });
 
-const wss = new WebSocketServer({ host, port, path });
+const { server: wss, port: listeningPort } = await listenWithPortFallback({
+  host,
+  path,
+  startPort: port,
+  portRange,
+  createServer: (options) => new WebSocketServer(options),
+  logger: console,
+});
+console.error(`[WebTrace Bridge] Listening for Edge extension at ws://${host}:${listeningPort}${path}`);
 
 stdio.onmessage = (message) => {
   router.handleClientMessage(message).catch((error) => {
@@ -111,10 +121,6 @@ wss.on('connection', (socket, request) => {
   socket.on('error', (error) => {
     console.error('[WebTrace Bridge] extension socket error:', error);
   });
-});
-
-wss.on('listening', () => {
-  console.error(`[WebTrace Bridge] Listening for Edge extension at ws://${host}:${port}${path}`);
 });
 
 wss.on('error', (error) => {

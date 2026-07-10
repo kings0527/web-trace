@@ -31,7 +31,9 @@ See [docs/SKILL-INTEGRATION.md](docs/SKILL-INTEGRATION.md)
 
 WebTrace now includes a local stdio bridge for MCP clients that cannot connect to
 an Edge extension RuntimePort directly. The bridge listens for the extension at
-`ws://127.0.0.1:3100/mcp` and proxies MCP JSON-RPC over stdio to Codex.
+`ws://127.0.0.1:3100/mcp` and proxies MCP JSON-RPC over stdio to Codex. If the
+port is already used by another Codex session, the bridge automatically tries
+the next ports in the range.
 
 ```bash
 codex mcp add webtrace -- node /Users/kk/git/web-trace/bin/webtrace-codex-bridge.mjs
@@ -39,7 +41,8 @@ codex mcp add webtrace -- node /Users/kk/git/web-trace/bin/webtrace-codex-bridge
 
 After changing extension code, rebuild and reload the unpacked extension in
 `edge://extensions`. The extension service worker automatically connects to the
-bridge when Codex starts it.
+bridge port range when Codex starts it, so multiple Codex sessions can use
+WebTrace at the same time.
 
 ## Architecture
 

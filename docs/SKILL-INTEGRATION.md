@@ -80,11 +80,16 @@ bridge 会自行完成 Codex MCP 启动握手，因此 Codex 启动不依赖 Edg
 如果扩展未连接，工具列表仍会显示；实际调用工具时会返回明确错误，直到 Edge WebTrace
 扩展加载并连上本地 bridge。
 
+多 Codex 会话场景下，每个 Codex 会启动自己的 stdio bridge。bridge 默认从 `3100`
+开始寻找空闲端口，若端口被占用则尝试 `3101`、`3102` 等后续端口。Edge 扩展会同时连接
+默认端口范围内的 bridge，因此多个 Codex 会话可以并行使用 WebTrace。
+
 可选环境变量：
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
 | `WEBTRACE_MCP_PORT` | `3100` | bridge 监听端口 |
+| `WEBTRACE_MCP_PORT_RANGE` | `10` | bridge 自动寻找空闲端口的范围 |
 | `WEBTRACE_MCP_HOST` | `127.0.0.1` | bridge 绑定地址 |
 | `WEBTRACE_EXTENSION_TIMEOUT_MS` | `30000` | Codex 请求等待扩展连接的时间 |
 

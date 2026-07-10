@@ -160,8 +160,7 @@ function withProtection<TArgs, TResult>(
 
 let mcpServer: McpServer | null = null;
 let currentTransport: Transport | null = null;
-let bridgeMCPServer: McpServer | null = null;
-let bridgeTransport: Transport | null = null;
+const bridgeServers = new Map<string, { server: McpServer; transport: Transport }>();
 
 /**
  * 创建并配置 MCP Server 实例
@@ -339,25 +338,37 @@ export async function stopServer(): Promise<void> {
  * 启动独立的 WebSocket bridge MCP Server。
  * RuntimePort 和 bridge 各用一个 McpServer 实例，避免单 transport 限制导致互相关闭。
  */
-export async function startBridgeServer(transport: Transport): Promise<void> {
-  if (bridgeMCPServer) {
-    console.warn('[MCP Bridge Server] Already connected, closing existing bridge transport');
-    await stopBridgeServer();
+export async function startBridgeServer(
+  transport: Transport,
+  connectionId = 'default',
+): Promise<void> {
+  if (bridgeServers.has(connectionId)) {
+    console.warn(`[MCP Bridge Server] Replacing existing bridge transport: ${connectionId}`);
+    await stopBridgeServer(connectionId);
   }
 
-  bridgeMCPServer = createBridgeMCPServer();
-  bridgeTransport = transport;
+  const bridgeMCPServer = createBridgeMCPServer();
+  bridgeServers.set(connectionId, { server: bridgeMCPServer, transport });
   await bridgeMCPServer.connect(transport);
-  console.log('[MCP Bridge Server] Started and connected to transport');
+  console.log(`[MCP Bridge Server] Started and connected to transport: ${connectionId}`);
 }
 
-export async function stopBridgeServer(): Promise<void> {
-  if (bridgeMCPServer) {
-    await bridgeMCPServer.close();
+export async function stopBridgeServer(connectionId?: string): Promise<void> {
+  if (connectionId) {
+    const bridge = bridgeServers.get(connectionId);
+    if (bridge) {
+      await bridge.server.close();
+      bridgeServers.delete(connectionId);
+    }
+    console.log(`[MCP Bridge Server] Stopped: ${connectionId}`);
+    return;
   }
-  bridgeMCPServer = null;
-  bridgeTransport = null;
-  console.log('[MCP Bridge Server] Stopped');
+
+  for (const [id, bridge] of bridgeServers) {
+    await bridge.server.close();
+    bridgeServers.delete(id);
+  }
+  console.log('[MCP Bridge Server] Stopped all bridge transports');
 }
 
 /**
@@ -375,5 +386,14 @@ export function isServerRunning(): boolean {
 }
 
 export function isBridgeServerRunning(): boolean {
-  return bridgeMCPServer?.isConnected() ?? false;
+  for (const bridge of bridgeServers.values()) {
+    if (bridge.server.isConnected()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function getBridgeServerConnectionIds(): string[] {
+  return [...bridgeServers.keys()];
 }
