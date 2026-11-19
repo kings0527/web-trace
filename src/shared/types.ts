@@ -19,7 +19,13 @@ export interface TraceEntry {
 
 // VM 派发循环识别结果
 export interface VMDispatcherInfo {
-  type: 'while-switch' | 'while-if-else' | 'handler-table';
+  type:
+    | 'while-switch'
+    | 'while-if-else'
+    | 'handler-table'
+    // 非常量循环条件的状态机形态（obfuscator.io / javascript-obfuscator 控制流平坦化）：
+    //   var s = 5; while (s) { switch (s) { case 48+7-50: ...; s = 6; break; } }
+    | 'while-switch-state-machine';
   location: { line: number; column: number };
   bytecodeArrayName: string;
   pcVariableName: string;

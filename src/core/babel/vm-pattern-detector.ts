@@ -64,6 +64,167 @@ function isInfiniteForLoop(node: t.ForStatement): boolean {
   return isInfiniteLoopCondition(node.test);
 }
 
+// ─── 常量折叠（控制流平坦化 state machine 支持） ───
+
+/** 折叠范围上限，避免病态表达式拖慢分析 */
+const MAX_FOLD_DEPTH = 32;
+
+/**
+ * 对纯常量表达式做递归折叠，返回数值。
+ *
+ * obfuscator.io / javascript-obfuscator 的「控制流平坦化」会把 case 标签写成
+ * 算术表达式而不是字面量，例如：
+ *   case 48+7-50:  → 5
+ *   case 99+16-69: → 46
+ *   case 0x10|0x1: → 17
+ *
+ * 支持：+ - * / % << >> >>> & | ^、一元 - + ~ !、括号。
+ * 无法静态求值（含标识符、函数调用等）时返回 undefined —— 调用方应降级为「仅保留标签」。
+ */
+function constFold(node: t.Node | null | undefined, depth = 0): number | undefined {
+  if (!node || depth > MAX_FOLD_DEPTH) return undefined;
+
+  if (t.isNumericLiteral(node)) return node.value;
+
+  if (t.isParenthesizedExpression(node)) {
+    return constFold(node.expression, depth + 1);
+  }
+
+  if (t.isUnaryExpression(node)) {
+    const arg = constFold(node.argument, depth + 1);
+    if (arg === undefined) return undefined;
+    switch (node.operator) {
+      case '-':
+        return -arg;
+      case '+':
+        return +arg;
+      case '~':
+        return ~arg;
+      case '!':
+        return arg === 0 ? 1 : 0;
+      default:
+        return undefined;
+    }
+  }
+
+  if (t.isBinaryExpression(node)) {
+    const left = constFold(node.left, depth + 1);
+    if (left === undefined) return undefined;
+    const right = constFold(node.right, depth + 1);
+    if (right === undefined) return undefined;
+
+    switch (node.operator) {
+      case '+':
+        return left + right;
+      case '-':
+        return left - right;
+      case '*':
+        return left * right;
+      case '/':
+        return left / right;
+      case '%':
+        return left % right;
+      case '<<':
+        return left << right;
+      case '>>':
+        return left >> right;
+      case '>>>':
+        return left >>> right;
+      case '&':
+        return left & right;
+      case '|':
+        return left | right;
+      case '^':
+        return left ^ right;
+      default:
+        return undefined;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * 检查一段语句中是否给某个标识符赋值（用于确认状态机的状态变量回写）。
+ * 只做浅层 + 一层函数体内的扫描，控制成本。
+ */
+function bodyAssignsIdentifier(stmts: t.Statement[], name: string): boolean {
+  let found = false;
+
+  const visit = (node: t.Node | null | undefined) => {
+    if (found || !node) return;
+    if (t.isAssignmentExpression(node)) {
+      if (t.isIdentifier(node.left) && node.left.name === name) {
+        found = true;
+        return;
+      }
+    } else if (t.isUpdateExpression(node)) {
+      if (t.isIdentifier(node.argument) && node.argument.name === name) {
+        found = true;
+        return;
+      }
+    }
+    // 不深入嵌套函数（状态变量通常是同一个函数作用域）
+    if (
+      t.isFunctionDeclaration(node) ||
+      t.isFunctionExpression(node) ||
+      t.isArrowFunctionExpression(node)
+    ) {
+      return;
+    }
+    for (const key of t.VISITOR_KEYS[node.type] ?? []) {
+      const child = (node as unknown as Record<string, unknown>)[key];
+      if (Array.isArray(child)) {
+        for (const c of child) if (c && typeof c === 'object') visit(c as t.Node);
+      } else if (child && typeof child === 'object' && 'type' in (child as object)) {
+        visit(child as t.Node);
+      }
+    }
+  };
+
+  for (const stmt of stmts) visit(stmt);
+  return found;
+}
+
+/**
+ * 识别「状态机式」派发循环（控制流平坦化）。
+ *
+ * 形态：
+ *   function f() {
+ *     var s = 5;
+ *     while (s) {                     // ← 循环测试是普通标识符（非常量）
+ *       switch (s) {                  // ← discriminant 是同一个标识符
+ *         case 48+7-50: { ...; s = 6; break; }   // ← 标签是算术表达式
+ *         case 60+17-71: { ...; s = 7; break; }
+ *       }
+ *     }
+ *   }
+ *
+ * 返回匹配到的 switch 节点与状态变量名；不匹配时返回 null。
+ * 该判定是独立的 predicate，不放松 isInfiniteLoopCondition，因此不改变既有行为。
+ */
+function matchStateMachineDispatch(
+  test: t.Expression | null | undefined,
+  body: t.BlockStatement,
+): { switchNode: t.SwitchStatement; stateVar: string } | null {
+  if (!test || !t.isIdentifier(test)) return null;
+  const stateVar = test.name;
+
+  for (const stmt of body.body) {
+    if (!t.isSwitchStatement(stmt)) continue;
+    if (!t.isIdentifier(stmt.discriminant)) continue;
+    if (stmt.discriminant.name !== stateVar) continue;
+
+    // 至少一个 case 体回写状态变量，才认定为状态机（排除普通 while(var) 循环）
+    const branches = stmt.cases.flatMap((c) => c.consequent);
+    if (!bodyAssignsIdentifier(branches, stateVar)) continue;
+
+    return { switchNode: stmt, stateVar };
+  }
+
+  return null;
+}
+
 /**
  * 从MemberExpression中提取数组名（字节码数组）和索引变量（PC）
  * 例如: bytecode[pc] -> { arrayName: 'bytecode', indexName: 'pc' }
@@ -167,6 +328,12 @@ function extractCases(switchNode: t.SwitchStatement): Map<number, string> {
       } else if (t.isIdentifier(caseClause.test)) {
         // case OPCODE_NAME: 形式（enum引用）
         label = caseClause.test.name;
+      } else {
+        // case 48+7-50: 形式（控制流平坦化，标签是常量算术表达式）
+        value = constFold(caseClause.test);
+        if (value !== undefined) {
+          label = `case_${value}`;
+        }
       }
 
       if (value !== undefined && !isNaN(value)) {
@@ -289,11 +456,30 @@ export function detectInCode(ast: t.File): VMDispatcherInfo[] {
       WhileStatement(path) {
         const node = path.node;
 
-        // 检查是否为无限循环
-        if (!isInfiniteLoopCondition(node.test)) return;
-
         const body = node.body;
         if (!t.isBlockStatement(body)) return;
+
+        // ─── 模式0: while-switch-state-machine（控制流平坦化） ───
+        // 必须在无限循环判定之前处理：这类循环的 test 是普通状态变量（while(s)），
+        // 不是真理值常量，因此 isInfiniteLoopCondition 必然为 false。
+        if (!isInfiniteLoopCondition(node.test)) {
+          const matched = matchStateMachineDispatch(node.test, body);
+          if (matched) {
+            const cases = extractCases(matched.switchNode);
+            dispatchers.push({
+              type: 'while-switch-state-machine',
+              location: {
+                line: node.loc?.start.line ?? 0,
+                column: node.loc?.start.column ?? 0,
+              },
+              bytecodeArrayName: '<state-machine>',
+              pcVariableName: matched.stateVar,
+              opcodeCount: cases.size || matched.switchNode.cases.length,
+              cases,
+            });
+          }
+          return;
+        }
 
         const stmts = body.body;
         if (stmts.length === 0) return;
