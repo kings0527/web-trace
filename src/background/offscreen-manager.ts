@@ -13,7 +13,11 @@ import { OFFSCREEN_HEARTBEAT_INTERVAL } from '@shared/constants';
 import type { OffscreenMessage, OffscreenMessageType } from '@shared/types';
 import { generateId } from '@shared/message-protocol';
 
-const OFFSCREEN_URL = 'src/offscreen/index.html';
+// NOTE: must match where Vite emits the page (dist/offscreen/index.html).
+// The historical value 'src/offscreen/index.html' 404s inside the extension and
+// makes chrome.offscreen.createDocument() reject with "Page failed to load.",
+// which silently breaks every sandbox tool (trace_execution / BABEL_ANALYZE).
+const OFFSCREEN_URL = 'offscreen/index.html';
 
 /** 心跳超时阈值（若心跳在此时间内未响应则认为offscreen已死） */
 const HEARTBEAT_TIMEOUT = OFFSCREEN_HEARTBEAT_INTERVAL * 2;

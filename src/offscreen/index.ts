@@ -90,55 +90,50 @@ async function getBabel(): Promise<{ parser: any; traverse: any }> {
 /**
  * 处理QuickJS执行任务
  * 在WASM沙箱中执行JavaScript代码
+ *
+ * 使用 core/quickjs 的 executeCode()：它会注入 __vmTrace 回调并收集 traceEntries，
+ * 并且返回 { success, value, error, traceEntries, executionTime }。
+ * 返回结构与 trace-execution.ts 的期望对齐：
+ *   { traceLog, executionResult, memoryUsed, executionTimeMs }
  */
 async function handleQuickJSExecute(payload: any): Promise<unknown> {
-  const quickjs = await getQuickJS();
-
-  const { code, config } = payload as {
+  const { code, config, inputs } = payload as {
     code: string;
-    config?: { memoryLimit?: number; maxExecutionTime?: number };
+    config?: { memoryLimit?: number; maxExecutionTime?: number; traceEnabled?: boolean; maxTraceEntries?: number };
+    inputs?: Record<string, unknown>;
   };
 
-  const vm = quickjs.newContext();
+  const { executeCode } = await import('@core/quickjs/sandbox');
 
-  try {
-    // 设置执行超时
-    const maxTime = config?.maxExecutionTime || 30000;
-    let timedOut = false;
-    const timeoutId = setTimeout(() => {
-      timedOut = true;
-      vm.runtime.setInterruptHandler(() => true);
-    }, maxTime);
-
-    // 执行代码
-    const result = vm.evalCode(code, 'user-script.js', {
-      strict: true,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (timedOut) {
-      if (result.error) {
-        vm.runtime.removeInterruptHandler();
-        result.error.dispose();
-      } else {
-        result.value.dispose();
-      }
-      throw new Error(`Execution timed out after ${maxTime}ms`);
-    }
-
-    if (result.error) {
-      const errorMsg = vm.dump(result.error);
-      result.error.dispose();
-      throw new Error(`QuickJS execution error: ${JSON.stringify(errorMsg)}`);
-    }
-
-    const value = vm.dump(result.value);
-    result.value.dispose();
-    return value;
-  } finally {
-    vm.dispose();
+  let source = code;
+  // 把 inputs 注入为全局变量，便于 VM 代码读取输入
+  if (inputs && Object.keys(inputs).length > 0) {
+    const assignments = Object.entries(inputs)
+      .map(([k, v]) => `var ${k} = ${JSON.stringify(v)};`)
+      .join('\n');
+    source = `${assignments}\n${code}`;
   }
+
+  const result = await executeCode(source, {
+    memoryLimit: config?.memoryLimit,
+    maxExecutionTime: config?.maxExecutionTime,
+    traceEnabled: config?.traceEnabled !== false,
+  });
+
+  if (!result.success) {
+    throw new Error(result.error || 'QuickJS execution failed');
+  }
+
+  const traceLog = result.traceEntries || [];
+  const maxEntries = config?.maxTraceEntries || Infinity;
+  const limited = traceLog.length > maxEntries ? traceLog.slice(0, maxEntries) : traceLog;
+
+  return {
+    traceLog: limited,
+    executionResult: result.value ?? null,
+    memoryUsed: 0,
+    executionTimeMs: result.executionTime,
+  };
 }
 
 /**
@@ -240,23 +235,29 @@ function createResponse(
 
 /**
  * 主消息处理器
+ *
+ * 返回任务结果（供 chrome.runtime.sendMessage 的 promise 直接拿到），
+ * 同时继续广播 RESULT/ERROR 消息（供 OffscreenManager 的 pendingTasks 通道使用）。
+ * 两条通道都必须保留：MCP 工具用 sendMessage 的返回值，内部 TRACE_DATA 用广播。
  */
-async function handleMessage(message: OffscreenMessage): Promise<void> {
+async function handleMessage(message: OffscreenMessage): Promise<unknown> {
   const { id, type, payload } = message;
 
   try {
     let result: unknown;
 
     switch (type) {
-      case 'HEARTBEAT':
+      case 'HEARTBEAT': {
         // 心跳响应 - 直接回复
-        chrome.runtime.sendMessage(createResponse(id, 'HEARTBEAT' as any, {
+        const beat = {
           alive: true,
           timestamp: Date.now(),
           quickjsLoaded: quickjsModule !== null,
           babelLoaded: babelParser !== null,
-        }));
-        return;
+        };
+        chrome.runtime.sendMessage(createResponse(id, 'HEARTBEAT' as any, beat));
+        return beat;
+      }
 
       case 'QUICKJS_EXECUTE':
         result = await handleQuickJSExecute(payload);
@@ -272,18 +273,20 @@ async function handleMessage(message: OffscreenMessage): Promise<void> {
 
     // 发送成功结果
     chrome.runtime.sendMessage(createResponse(id, 'RESULT', result));
+    return result;
   } catch (err) {
     // 发送错误结果
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error(`[Offscreen] Task ${type} failed:`, errorMessage);
     chrome.runtime.sendMessage(createResponse(id, 'ERROR', errorMessage));
+    throw err;
   }
 }
 
 // ─── 消息监听器注册 ───
 
 chrome.runtime.onMessage.addListener(
-  (message: unknown, _sender, _sendResponse) => {
+  (message: unknown, _sender, sendResponse) => {
     // 验证消息格式
     if (
       typeof message !== 'object' ||
@@ -305,9 +308,21 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
-    // 异步处理（不阻塞消息通道）
-    handleMessage(msg);
-    return false;
+    // 异步处理，并通过 sendResponse 回给发起方。
+    // 工具侧（trace-execution.ts）读取的是 { success, data|error } 形状的响应，
+    // 因此这里必须显式回包；只广播 RESULT 会让 sendMessage() 解析成 undefined。
+    handleMessage(msg)
+      .then((result) => {
+        sendResponse({ success: true, data: result });
+      })
+      .catch((err) => {
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+
+    return true; // 保持消息通道打开以支持异步 sendResponse
   }
 );
 
