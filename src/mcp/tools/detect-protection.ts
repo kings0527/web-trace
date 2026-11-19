@@ -58,6 +58,17 @@ function analyzeProtectionFeatures(source: string): ProtectionInfo {
     { pattern: /akamai.*sensor_data/gi, name: 'Akamai Bot Manager' },
     { pattern: /px-captcha|perimeterx/gi, name: 'PerimeterX' },
     { pattern: /datadome/gi, name: 'DataDome' },
+    // ─── 阿里云 WAF / 盾 ───
+    { pattern: /acw_sc__v[23]/gi, name: 'Aliyun WAF acw_sc__v2' },
+    { pattern: /\bacw_tc\b/gi, name: 'Aliyun WAF acw_tc' },
+    { pattern: /x-br-response|_br_?ts|baxia/i, name: 'Aliyun WAF baxia' },
+    { pattern: /arg1=|arg2=|acw_sc/i, name: 'Aliyun WAF challenge args' },
+    // ─── 同盾 TrustDevice / 验签 ───
+    { pattern: /trustdevice|tdCaptcha|_fmOpt|fm\.js/i, name: 'TongDun TrustDevice' },
+    { pattern: /td_?fm|TDC_?name|tdc\.js/i, name: 'TongDun TDC' },
+    // ─── 阿里云设备指纹 FP ───
+    { pattern: /aliyun[_-]?fp|ALIYUN_FP|aliyunFP/gi, name: 'Aliyun FP SDK' },
+    { pattern: /umidToken|umx\.js/i, name: 'Alibaba UMID' },
   ];
 
   for (const { pattern, name } of challengePatterns) {
@@ -93,6 +104,13 @@ function analyzeProtectionFeatures(source: string): ProtectionInfo {
   const jsvmpPatterns = [
     // while(true) { switch(opcode) { case N: ... }}
     { pattern: /while\s*\(\s*!?[01!]?\s*\)\s*\{?\s*switch\s*\(/g, threshold: 1, name: 'JSVMP dispatch loop' },
+    // 控制流平坦化状态机: while(s){switch(s){case 48+7-50: ... s=6;}}
+    // 循环测试与 switch 判别式是同一个标识符，且 case 标签为算术表达式
+    {
+      pattern: /while\s*\(\s*([\w$]+)\s*\)\s*\{\s*switch\s*\(\s*\1\s*\)\s*\{[^}]*case\s+[0-9]+(?:\s*[-+*\/%&|^<>]+\s*[0-9]+)+\s*:/g,
+      threshold: 1,
+      name: 'Control-flow-flattening state machine',
+    },
     // 字节码数组特征
     { pattern: /\[\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*\d+/g, threshold: 3, name: 'Bytecode array' },
     // PC 计数器递增
@@ -198,6 +216,12 @@ export async function handleDetectProtection(
     } finally {
       clearTimeout(timeoutId);
     }
+
+    // 关键补充：保护 SDK 几乎都是 <script src=...> 外部脚本，
+    // 只扫 HTML 会稳定误报 type:"none"。抓取前 N 个外部脚本一起分析。
+    const scriptUrls = extractScriptUrls(source, args.url);
+    const fetched = await fetchScriptSources(scriptUrls, Math.min(scriptUrls.length, 20));
+    source += '\n' + fetched;
   } else {
     // 获取当前活跃 tab 的页面源码
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -238,4 +262,61 @@ export async function handleDetectProtection(
   }
 
   return analyzeProtectionFeatures(source);
+}
+
+// ─── 外部脚本抓取辅助 ───
+
+/** 从 HTML 中提取 <script src> 的绝对 URL（跳过内联/data:） */
+function extractScriptUrls(html: string, baseUrl: string): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const re = /<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const raw = m[1].trim();
+    if (!raw || raw.startsWith('data:') || raw.startsWith('blob:')) continue;
+    let abs: string;
+    try {
+      abs = new URL(raw, baseUrl).toString();
+    } catch {
+      continue;
+    }
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    urls.push(abs);
+  }
+  return urls;
+}
+
+/**
+ * 并发抓取若干外部脚本源码，返回拼接后的文本。
+ * 单个脚本失败/超时不阻塞整体分析（保护 SDK 常带鉴权，抓不到也应继续）。
+ */
+async function fetchScriptSources(urls: string[], limit = 20): Promise<string> {
+  const targets = urls.slice(0, limit);
+  const results = await Promise.all(
+    targets.map(async (u) => {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 8000);
+      try {
+        const r = await fetch(u, {
+          signal: ctl.signal,
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': urls.length ? new URL(urls[0]).origin + '/' : '',
+          },
+        });
+        if (!r.ok) return `/* [WebTrace] ${u} -> HTTP ${r.status} */`;
+        const text = await r.text();
+        // 只保留前 2MB/脚本，避免超大 SDK 拖垮分析
+        return `\n/* [WebTrace] external script ${u} */\n` + text.slice(0, 2 * 1024 * 1024);
+      } catch (err) {
+        return `/* [WebTrace] ${u} -> fetch failed: ${err instanceof Error ? err.message : String(err)} */`;
+      } finally {
+        clearTimeout(timer);
+      }
+    }),
+  );
+  return results.join('\n');
 }
