@@ -19,7 +19,8 @@
     "@jitl/quickjs-singlefile-browser-release-sync": "^0.30.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "quickjs-emscripten-core": "^0.30.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@babel/generator": "^7.25.0",
